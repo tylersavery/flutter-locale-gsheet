@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import { google } from "./config/google";
+import * as fs from 'fs';
+import { exec } from 'child_process';
+
 import {
   rowIndexAtKey,
   toCamelCase,
@@ -10,34 +12,34 @@ import {
 // eslint-disable-next-line @typescript-eslint/naming-convention
 const { GoogleSpreadsheet } = require("google-spreadsheet");
 
-const IMPORT_STRING = `import 'package:flutter_gen/gen_l10n/app_localizations.dart';`;
-const PREFIX = `AppLocalizations.of(context)`;
+const IMPORT_STRING = `import 'package:${vscode.workspace.getConfiguration().get("flutteri18n.projectName")}/generated/l10n.dart';`;
+const PREFIX = `S.of(context)`;
 
 export async function activate(context: vscode.ExtensionContext) {
-  const env = vscode.workspace.getConfiguration("flutteri18n");
+  const env = vscode.workspace.getConfiguration();
 
-  const SHEET_ID = env.get("sheetId");
-  const EMAIL = env.get("email");
-  const PRIVATE_KEY = env.get("privateKey");
+  const SHEET_ID = env.get("flutteri18n.sheetId");
+  const EMAIL = env.get("flutteri18n.email");
+  const PRIVATE_KEY = env.get("flutteri18n.privateKey");
+  const LANGUAGES: string[] = env.get('flutteri18n.languages') || [];
+  const USE_FVM: boolean = env.get("flutteri18n.useFvm") || false;
 
-  const doc = new GoogleSpreadsheet(SHEET_ID); //TODO: make dynamic
-
-  // const config = vscode.workspace.getConfiguration(
-  //   "theyoungastronauts.flutter-locale-gsheet"
-  // );
-  // console.log(
-  //   config.get("theyoungastronauts.flutter-locale-gsheet.google.sheetId")
-  // );
+  const doc = new GoogleSpreadsheet(SHEET_ID);
 
   await doc.useServiceAccountAuth({
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    client_email: EMAIL, //TODO: make dynamic
+    client_email: EMAIL,
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    private_key: PRIVATE_KEY, //TODO: make dynamic
+    private_key: PRIVATE_KEY,
   });
 
   await doc.loadInfo();
   const sheet = doc.sheetsByIndex[0];
+
+  let exportDisposable = vscode.commands.registerCommand(
+    "flutter-locale-gsheet.FlutterLocaleGSheetExport",
+    () => generateArb()
+  );
 
   let disposable = vscode.commands.registerCommand(
     "flutter-locale-gsheet.FlutterLocaleGSheet",
@@ -46,7 +48,41 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (editor) {
         const document = editor.document;
-        const selection = editor.selection;
+        let selection = editor.selection;
+
+        editor.selection.start;
+
+        if (editor.selection.end.compareTo(editor.selection.start) === 0) {
+
+          var i = editor.selection.start.character;
+          var line = editor.selection.start.line;
+
+          var s = null;
+          var e = null;
+          while (s === null) {
+            const char = editor.document.getText(new vscode.Range(new vscode.Position(line, i), new vscode.Position(line, i + 1)));
+            if (char === '"' || char === "'") {
+              s = i;
+            }
+            i--;
+
+          }
+
+          var i = editor.selection.start.character;
+          while (e === null) {
+            const char = editor.document.getText(new vscode.Range(new vscode.Position(line, i), new vscode.Position(line, i + 1)));
+            if (char === '"' || char === "'") {
+              e = i;
+            }
+            i++;
+
+          }
+
+          if (s !== null && e !== null) {
+            selection = new vscode.Selection(new vscode.Position(line, s), new vscode.Position(line, e + 1));
+          }
+
+        }
 
         let value = document.getText(selection);
 
@@ -95,12 +131,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
           if (updateGoogleSheet) {
             const rowNumber = rows.length + 2; // accounting for header + the new row we are making
-            const translateValue = `=GOOGLETRANSLATE(B${rowNumber}, "en", "es")`;
-            await sheet.addRow({
+
+            const columns: any = {};
+            for (const l of LANGUAGES) {
+              columns[l] = l === LANGUAGES[0] ? value : `=GOOGLETRANSLATE(B${rowNumber}, "en", "${l}")`;
+            }
+
+            const row = {
               key: newKey,
-              en: value,
-              es: translateValue,
-            });
+              ...columns,
+            };
+
+            await sheet.addRow(row);
           }
 
           const replacement = `${PREFIX}.${newKey}`;
@@ -114,12 +156,70 @@ export async function activate(context: vscode.ExtensionContext) {
             }
             editBuilder.replace(selection, replacement);
           });
+
+          generateArb();
+
         });
       }
     }
   );
 
   context.subscriptions.push(disposable);
+  context.subscriptions.push(exportDisposable);
 }
 
-export function deactivate() {}
+export async function generateArb() {
+  const env = vscode.workspace.getConfiguration();
+
+  const SHEET_ID = env.get("flutteri18n.sheetId");
+  const EMAIL = env.get("flutteri18n.email");
+  const PRIVATE_KEY = env.get("flutteri18n.privateKey");
+  const LANGUAGES: string[] = env.get('flutteri18n.languages') || [];
+  const USE_FVM: boolean = env.get("flutteri18n.useFvm") || false;
+
+
+
+  const outputs: any = {};
+
+  const doc = new GoogleSpreadsheet(SHEET_ID);
+
+  await doc.useServiceAccountAuth({
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    client_email: EMAIL,
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    private_key: PRIVATE_KEY,
+  });
+
+  await doc.loadInfo();
+  const sheet = doc.sheetsByIndex[0];
+  const rows = await sheet.getRows();
+
+  for (let i = 0; i < rows.length; i++) {
+
+    const row = rows[i];
+    const key = row.key;
+    for (let l of LANGUAGES) {
+      if (!outputs[l]) {
+        outputs[l] = {};
+      }
+
+      outputs[l][key] = row[l];
+    }
+  }
+
+
+  const PROJECT_PATH = env.get('flutteri18n.projectPath');
+
+  for (let [key, value] of Object.entries(outputs)) {
+    const outputPath = `${PROJECT_PATH}lib/l10n/intl_${key}.arb`;
+    const json = JSON.stringify(value);
+
+    fs.writeFileSync(outputPath, json, "utf8");
+
+  }
+
+  const cmd = `cd ${PROJECT_PATH} && ${USE_FVM ? 'fvm ' : ''}flutter pub run intl_utils:generate`;
+  exec(cmd);
+}
+
+export function deactivate() { }

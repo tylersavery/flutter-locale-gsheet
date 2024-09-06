@@ -3,7 +3,7 @@
 	"displayName": "FlutterLocaleGSheet",
 	"publisher": "TheYoungAstronauts",
 	"description": "",
-	"version": "0.0.6",
+	"version": "2.1.1",
 	"engines": {
 		"vscode": "^1.52.0"
 	},
@@ -11,7 +11,8 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:flutter-locale-gsheet.FlutterLocaleGSheet"
+		"onCommand:flutter-locale-gsheet.FlutterLocaleGSheet",
+		"onCommand:flutter-locale-gsheet.FlutterLocaleGSheetExport"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -24,7 +25,7 @@
 						"string",
 						"null"
 					],
-					"default": "hello",
+					"default": null,
 					"description": "The id of the google sheet."
 				},
 				"flutteri18n.email": {
@@ -42,6 +43,52 @@
 					],
 					"default": null,
 					"description": "The service account's private key."
+				},
+				"flutteri18n.nullSafety": {
+					"type": [
+						"boolean",
+						"null"
+					],
+					"default": true,
+					"description": "Does this project use null safety?"
+				},
+				"flutteri18n.projectName": {
+					"type": [
+						"string",
+						"null"
+					],
+					"default": true,
+					"description": "Name of your project (for dart import purposes)"
+				},
+				"flutteri18n.languages": {
+					"type": [
+						"array",
+						[
+							"en",
+							"es_US"
+						]
+					],
+					"default": [
+						"en",
+						"es_US"
+					],
+					"description": "List of language codes to translate to."
+				},
+				"flutteri18n.projectPath": {
+					"type": [
+						"string",
+						"null"
+					],
+					"default": "",
+					"description": "Absolute path to the root of the fluter project"
+				},
+				"flutteri18n.useFvm": {
+					"type": [
+						"boolean",
+						"null"
+					],
+					"default": false,
+					"description": "Does this project use fvm?"
 				}
 			}
 		},
@@ -49,6 +96,10 @@
 			{
 				"command": "flutter-locale-gsheet.FlutterLocaleGSheet",
 				"title": "FlutterLocaleGSheet"
+			},
+			{
+				"command": "flutter-locale-gsheet.FlutterLocaleGSheetExport",
+				"title": "FlutterLocaleGSheetExport"
 			}
 		]
 	},
@@ -58,7 +109,8 @@
 		"watch": "tsc -watch -p ./",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
-		"test": "node ./out/test/runTest.js"
+		"test": "node ./out/test/runTest.js",
+		"package": "vsce package"
 	},
 	"devDependencies": {
 		"@types/vscode": "^1.52.0",
@@ -76,6 +128,7 @@
 	"dependencies": {
 		"balanced-match": "^1.0.0",
 		"escape-string-regexp": "^4.0.0",
-		"google-spreadsheet": "^3.1.15"
+		"google-spreadsheet": "^3.1.15",
+		"vsce": "^2.15.0"
 	}
 }
